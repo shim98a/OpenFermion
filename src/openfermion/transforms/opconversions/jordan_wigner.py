@@ -101,26 +101,34 @@ def _jordan_wigner_diagonal_coulomb_hamiltonian(operator):
     # Transform diagonal one-body terms
     for p in range(n_qubits):
         coefficient = operator.one_body[p, p] + operator.two_body[p, p]
-        qubit_operator += QubitOperator(((p, 'Z'),), -0.5 * coefficient)
-        qubit_operator += QubitOperator((), 0.5 * coefficient)
+        qubit_operator += QubitOperator(((p, 'Z'),), -0.5 * coefficient, unsafe=True)
+        qubit_operator += QubitOperator((), 0.5 * coefficient, unsafe=True)
 
     # Transform other one-body terms and two-body terms
     for p, q in itertools.combinations(range(n_qubits), 2):
         # One-body
         real_part = numpy.real(operator.one_body[p, q])
         imag_part = numpy.imag(operator.one_body[p, q])
-        parity_string = [(i, 'Z') for i in range(p + 1, q)]
-        qubit_operator += QubitOperator([(p, 'X')] + parity_string + [(q, 'X')], 0.5 * real_part)
-        qubit_operator += QubitOperator([(p, 'Y')] + parity_string + [(q, 'Y')], 0.5 * real_part)
-        qubit_operator += QubitOperator([(p, 'Y')] + parity_string + [(q, 'X')], 0.5 * imag_part)
-        qubit_operator += QubitOperator([(p, 'X')] + parity_string + [(q, 'Y')], -0.5 * imag_part)
+        parity_string = tuple((i, 'Z') for i in range(p + 1, q))
+        qubit_operator += QubitOperator(
+            ((p, 'X'),) + parity_string + ((q, 'X'),), 0.5 * real_part, unsafe=True
+        )
+        qubit_operator += QubitOperator(
+            ((p, 'Y'),) + parity_string + ((q, 'Y'),), 0.5 * real_part, unsafe=True
+        )
+        qubit_operator += QubitOperator(
+            ((p, 'Y'),) + parity_string + ((q, 'X'),), 0.5 * imag_part, unsafe=True
+        )
+        qubit_operator += QubitOperator(
+            ((p, 'X'),) + parity_string + ((q, 'Y'),), -0.5 * imag_part, unsafe=True
+        )
 
         # Two-body
         coefficient = operator.two_body[p, q]
-        qubit_operator += QubitOperator(((p, 'Z'), (q, 'Z')), 0.5 * coefficient)
-        qubit_operator += QubitOperator((p, 'Z'), -0.5 * coefficient)
-        qubit_operator += QubitOperator((q, 'Z'), -0.5 * coefficient)
-        qubit_operator += QubitOperator((), 0.5 * coefficient)
+        qubit_operator += QubitOperator(((p, 'Z'), (q, 'Z')), 0.5 * coefficient, unsafe=True)
+        qubit_operator += QubitOperator(((p, 'Z'),), -0.5 * coefficient, unsafe=True)
+        qubit_operator += QubitOperator(((q, 'Z'),), -0.5 * coefficient, unsafe=True)
+        qubit_operator += QubitOperator((), 0.5 * coefficient, unsafe=True)
 
     return qubit_operator
 
@@ -144,37 +152,40 @@ def _jordan_wigner_interaction_op(iop, n_qubits=None):
     # Initialize qubit operator as constant.
     qubit_operator = QubitOperator((), iop.constant)
 
+    one_body_tensor = iop.one_body_tensor
+    two_body_tensor = iop.two_body_tensor
+
     # Transform diagonal one-body terms
     for p in range(n_qubits):
-        coefficient = iop[(p, 1), (p, 0)]
+        coefficient = one_body_tensor[p, p]
         qubit_operator += jordan_wigner_one_body(p, p, coefficient)
 
     # Transform other one-body terms and "diagonal" two-body terms
     for p, q in itertools.combinations(range(n_qubits), 2):
         # One-body
-        coefficient = 0.5 * (iop[(p, 1), (q, 0)] + iop[(q, 1), (p, 0)].conjugate())
+        coefficient = 0.5 * (one_body_tensor[p, q] + one_body_tensor[q, p].conjugate())
         qubit_operator += jordan_wigner_one_body(p, q, coefficient)
 
         # Two-body
         coefficient = (
-            iop[(p, 1), (q, 1), (p, 0), (q, 0)]
-            - iop[(p, 1), (q, 1), (q, 0), (p, 0)]
-            - iop[(q, 1), (p, 1), (p, 0), (q, 0)]
-            + iop[(q, 1), (p, 1), (q, 0), (p, 0)]
+            two_body_tensor[p, q, p, q]
+            - two_body_tensor[p, q, q, p]
+            - two_body_tensor[q, p, p, q]
+            + two_body_tensor[q, p, q, p]
         )
         qubit_operator += jordan_wigner_two_body(p, q, p, q, coefficient)
 
     # Transform the rest of the two-body terms
     for (p, q), (r, s) in itertools.combinations(itertools.combinations(range(n_qubits), 2), 2):
         coefficient = 0.5 * (
-            iop[(p, 1), (q, 1), (r, 0), (s, 0)]
-            + iop[(s, 1), (r, 1), (q, 0), (p, 0)].conjugate()
-            - iop[(p, 1), (q, 1), (s, 0), (r, 0)]
-            - iop[(r, 1), (s, 1), (q, 0), (p, 0)].conjugate()
-            - iop[(q, 1), (p, 1), (r, 0), (s, 0)]
-            - iop[(s, 1), (r, 1), (p, 0), (q, 0)].conjugate()
-            + iop[(q, 1), (p, 1), (s, 0), (r, 0)]
-            + iop[(r, 1), (s, 1), (p, 0), (q, 0)].conjugate()
+            two_body_tensor[p, q, r, s]
+            + two_body_tensor[s, r, q, p].conjugate()
+            - two_body_tensor[p, q, s, r]
+            - two_body_tensor[r, s, q, p].conjugate()
+            - two_body_tensor[q, p, r, s]
+            - two_body_tensor[s, r, p, q].conjugate()
+            + two_body_tensor[q, p, s, r]
+            + two_body_tensor[r, s, p, q].conjugate()
         )
         qubit_operator += jordan_wigner_two_body(p, q, r, s, coefficient)
 
@@ -201,12 +212,12 @@ def jordan_wigner_one_body(p, q, coefficient=1.0):
             (-coefficient.imag, 'XY'),
         ]:
             operators = ((p, op_a),) + parity_string + ((q, op_b),)
-            qubit_operator += QubitOperator(operators, 0.5 * c)
+            qubit_operator += QubitOperator(operators, 0.5 * c, unsafe=True)
 
     # Handle diagonal terms.
     else:
-        qubit_operator += QubitOperator((), 0.5 * coefficient)
-        qubit_operator += QubitOperator(((p, 'Z'),), -0.5 * coefficient)
+        qubit_operator += QubitOperator((), 0.5 * coefficient, unsafe=True)
+        qubit_operator += QubitOperator(((p, 'Z'),), -0.5 * coefficient, unsafe=True)
 
     return qubit_operator
 
@@ -256,7 +267,7 @@ def jordan_wigner_two_body(p, q, r, s, coefficient=1.0):
             operators += ((d, operator_d),)
 
             # Add term.
-            qubit_operator += QubitOperator(operators, coeff)
+            qubit_operator += QubitOperator(operators, coeff, unsafe=True)
 
     # Handle case of three unique indices.
     elif len(set([p, q, r, s])) == 3:
@@ -294,7 +305,7 @@ def jordan_wigner_two_body(p, q, r, s, coefficient=1.0):
 
         # Get operators.
         parity_string = tuple((z, 'Z') for z in range(a + 1, b))
-        pauli_z = QubitOperator(((c, 'Z'),))
+        pauli_z = QubitOperator(((c, 'Z'),), unsafe=True)
         for c, (op_a, op_b) in [
             (coefficient.real, 'XX'),
             (coefficient.real, 'YY'),
@@ -306,7 +317,7 @@ def jordan_wigner_two_body(p, q, r, s, coefficient=1.0):
                 continue
 
             # Add term.
-            hopping_term = QubitOperator(operators, c / 4)
+            hopping_term = QubitOperator(operators, c / 4, unsafe=True)
             qubit_operator -= pauli_z * hopping_term
             qubit_operator += hopping_term
 
@@ -319,9 +330,9 @@ def jordan_wigner_two_body(p, q, r, s, coefficient=1.0):
             coeff = 0.25 * coefficient
 
         # Add terms.
-        qubit_operator -= QubitOperator((), coeff)
-        qubit_operator += QubitOperator(((p, 'Z'),), coeff)
-        qubit_operator += QubitOperator(((q, 'Z'),), coeff)
-        qubit_operator -= QubitOperator(((min(q, p), 'Z'), (max(q, p), 'Z')), coeff)
+        qubit_operator -= QubitOperator((), coeff, unsafe=True)
+        qubit_operator += QubitOperator(((p, 'Z'),), coeff, unsafe=True)
+        qubit_operator += QubitOperator(((q, 'Z'),), coeff, unsafe=True)
+        qubit_operator -= QubitOperator(((min(q, p), 'Z'), (max(q, p), 'Z')), coeff, unsafe=True)
 
     return qubit_operator

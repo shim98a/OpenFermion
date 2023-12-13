@@ -119,12 +119,49 @@ class SymbolicOperator(metaclass=abc.ABCMeta):
 
     __hash__ = None
 
-    def __init__(self, term=None, coefficient=1.0):
+    def __init__(self, term=None, coefficient=1.0, unsafe=False):
+        r"""Initialize SymolicOperator.
+
+        Args:
+            term (str or list or tuple or None):
+                The initial term. If `None`, an empty SymbolicOperator
+                instance with no term will be created. Default: `None`.
+            coefficient (COEFFICIENT_TYPES):
+                The coefficient of the initial term. Default: `1.0`.
+            unsafe (bool):
+                Normally, `unsafe` should be set to `False`.
+                If `True`, `term` is assumed to be simplified and parsed
+                (see Note for the details about simplified parsed terms).
+                Setting `unsafe` to `True` and passing a simplified parsed
+                `term` makes this constructor faster. If "`unsafe` is set
+                `True`" and "`term` is not parsed or is not simplified",
+                the behavior of the program after calling this constructor
+                is undefined. So `unsafe` should ONLY be set to `True` when
+                we know `term` is simplified and parsed. Default: `False`.
+
+        Note: Parsed terms and simplified terms.
+            A parsed `term` takes the form of
+            `tuple[tuple[("index type", "action type")]...]`.
+            A simplified term is sorted in the index order. A simplified term
+            has no redundant expression like `((0, 'X'), (1, 'Z'), (1, 'Z'), ...)`
+            for `QubitOperator` (this can be simplified to `((0, 'X'), ...)`
+            because Z1*Z1 is equivalent to identity).
+
+            So simplified parsed `term`s look like
+            `(('Y', 0), ('X', 2), ('Z', 3))` for a `QubitOperator` and
+            `((1, 1), (3, 0), (5, 0))` for a `FermionOperator`.
+        """
+
         if not isinstance(coefficient, COEFFICIENT_TYPES):
             raise ValueError('Coefficient must be a numeric type. Got {}'.format(type(coefficient)))
 
         # Initialize the terms dictionary
         self.terms = {}
+
+        if unsafe:
+            # `term` is assumed to be parsed and simplified.
+            self.terms[term] = coefficient
+            return
 
         # Detect if the input is the string representation of a sum of terms;
         # if so, initialization needs to be handled differently
