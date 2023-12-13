@@ -418,6 +418,37 @@ class SymbolicOperator(metaclass=abc.ABCMeta):
         else:
             raise TypeError('Object of invalid type cannot multiply with ' + type(self) + '.')
 
+    def add_simplified_parsed_term(self, term, coeff):
+        r"""Add a simplified parsed term to this operator.
+        This method should be used with care because `term` is
+        assumed to be simplified and parsed in this method.
+        For a simplified parsed term, we can skip using
+        the `self._simplify` method and the `self._parse_sequence`
+        method (or the `self._parse_string` method). These methods
+        are the bottleneck of the SymbolicOperator's constructor.
+        So skipping these methods makes term addition faster than
+        the case of using codes like `self += QubitOperator(term, coeff)`
+        and `self += FermionOperator(term, coeff)` etc.
+
+        Args:
+            term (tuple): a simplified parsed term to be added to
+                this operator. Examples of the simplified parsed
+                terms are `(('Y', 0), ('X', 2), ('Z', 3),)` for a
+                QubitOperator and `((0, 1), (1, 1), (2, 0),)` for
+                a BosonOperator. If `term` is not simplified or is
+                not parsed, the behavior of the program after
+                calling this method is undefined.
+            coeff (COEFFICIENT_TYPES): the coefficient of the term.
+
+        Note:
+            If `term` is not simplified or is not parsed, the behavior
+            of the program after calling this method is undefined.
+            So this function must be used with care.
+        """
+        self.terms[term] = self.terms.get(term, 0.0) + coeff
+        if self._issmall(self.terms[term]):
+            del self.terms[term]
+
     def __iadd__(self, addend):
         """In-place method for += addition of SymbolicOperator.
 
@@ -433,9 +464,7 @@ class SymbolicOperator(metaclass=abc.ABCMeta):
         """
         if isinstance(addend, type(self)):
             for term in addend.terms:
-                self.terms[term] = self.terms.get(term, 0.0) + addend.terms[term]
-                if self._issmall(self.terms[term]):
-                    del self.terms[term]
+                self.add_simplified_parsed_term(term, addend.terms[term])
         elif isinstance(addend, COEFFICIENT_TYPES):
             self.constant += addend
         else:
@@ -480,9 +509,7 @@ class SymbolicOperator(metaclass=abc.ABCMeta):
         """
         if isinstance(subtrahend, type(self)):
             for term in subtrahend.terms:
-                self.terms[term] = self.terms.get(term, 0.0) - subtrahend.terms[term]
-                if self._issmall(self.terms[term]):
-                    del self.terms[term]
+                self.add_simplified_parsed_term(term, -subtrahend.terms[term])
         elif isinstance(subtrahend, COEFFICIENT_TYPES):
             self.constant -= subtrahend
         else:
